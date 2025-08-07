@@ -118,7 +118,7 @@ class FirstModuleParameterNode:
     invertedVolume - The output volume that will contain the inverted thresholded volume.
     """
 
-    inputVolume: vtkMRMLMarkupsFiducialNode
+    inputVolume: vtkMRMLScalarVolumeNode
     imageThreshold: Annotated[float, WithinRange(-100, 500)] = 100
     invertThreshold: bool = False
     thresholdedVolume: vtkMRMLScalarVolumeNode
@@ -275,6 +275,7 @@ class FirstModuleLogic(ScriptedLoadableModuleLogic):
 
     def getParameterNode(self):
         return FirstModuleParameterNode(super().getParameterNode())
+        
 
     def process(self,
                 inputVolume: vtkMRMLScalarVolumeNode,
@@ -313,6 +314,19 @@ class FirstModuleLogic(ScriptedLoadableModuleLogic):
 
         stopTime = time.time()
         logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+
+    def getCenterOfMass(self, markupsNode):
+        centerOfMass = [0,0,0]
+        import numpy as np
+        sumPos = np.zeros(3)
+        for i in range(markupsNode.GetNumberOfControlPoints()):
+            pos = markupsNode.GetNthControlPointPosition(i)
+            sumPos += pos
+        centerOfMass = sumPos / markupsNode.GetNumberOfControlPoints()
+        logging.info(f'Center of mass for {markupsNode.GetName()}: {centerOfMass}')
+        return centerOfMass
+        
+     
 
 
 #
