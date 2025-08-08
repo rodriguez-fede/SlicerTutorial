@@ -142,6 +142,8 @@ class FirstModuleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._parameterNodeGuiTag = None
+        self.observedMarkupNode = None
+        self._markupsObserverTag = None
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -170,6 +172,9 @@ class FirstModuleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Buttons
         self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
+
+        # Auto update checkbox
+        self.ui.autoUpdateCheckBox.connect("toggled(bool)", self.onEnableAutoUpdate)
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -252,6 +257,18 @@ class FirstModuleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.invertOutputCheckBox.checked)
             self.ui.centerOfMassValueLabel.text = str(self.logic.centerOfMass)
                 
+    def onEnableAutoUpdate(self, autoUpdate):
+        if self._markupsObserverTag:
+            self.observedMarkupNode.RemoveObserver(self._markupsObserverTag)
+            self.observedMarkupNode = None
+            self._markupsObserverTag = None
+        if autoUpdate and self.ui.inputSelector.currentNode:
+            self.observedMarkupNode = self.ui.inputSelector.currentNode()
+            self._markupsObserverTag = self.observedMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.onMarkupsUpdated)
+
+    def onMarkupsUpdated(self, caller=None, event=None):
+        self.onApplyButton()
+
     def onEnableAutoUpdate(self, autoUpdate):
         if self._markupsObserverTag:
             self.observedMarkupNode.RemoveObserver(self._markupsObserverTag)
