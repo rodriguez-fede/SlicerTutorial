@@ -118,7 +118,7 @@ class FirstModuleParameterNode:
     invertedVolume - The output volume that will contain the inverted thresholded volume.
     """
 
-    inputVolume: vtkMRMLScalarVolumeNode
+    inputVolume: vtkMRMLMarkupsFiducialNode
     imageThreshold: Annotated[float, WithinRange(-100, 500)] = 100
     invertThreshold: bool = False
     thresholdedVolume: vtkMRMLScalarVolumeNode
