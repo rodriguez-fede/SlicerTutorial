@@ -232,26 +232,37 @@ class FirstModuleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
             self._checkCanApply()
 
+
+
     def _checkCanApply(self, caller=None, event=None) -> None:
-        if self._parameterNode and self._parameterNode.inputVolume and self._parameterNode.thresholdedVolume:
-            self.ui.applyButton.toolTip = _("Compute output volume")
+        if self._parameterNode and self._parameterNode.inputVolume:
+            self.ui.applyButton.toolTip = _("Compute center of mass")
             self.ui.applyButton.enabled = True
         else:
-            self.ui.applyButton.toolTip = _("Select input and output volume nodes")
+            self.ui.applyButton.toolTip = _("Select input point list")
             self.ui.applyButton.enabled = False
-
+                
     def onApplyButton(self) -> None:
         """Run processing when user clicks "Apply" button."""
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
             # Compute output
-            self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-                               self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
+            self.logic.process(self.ui.inputSelector.currentNode(),
+                self.ui.outputSelector.currentNode(),
+                self.ui.imageThresholdSliderWidget.value,
+                self.ui.invertOutputCheckBox.checked)
+            self.ui.centerOfMassValueLabel.text = str(self.logic.centerOfMass)
+                
+    def onEnableAutoUpdate(self, autoUpdate):
+        if self._markupsObserverTag:
+            self.observedMarkupNode.RemoveObserver(self._markupsObserverTag)
+            self.observedMarkupNode = None
+            self._markupsObserverTag = None
+        if autoUpdate and self.ui.inputSelector.currentNode:
+            self.observedMarkupNode = self.ui.inputSelector.currentNode()
+            self._markupsObserverTag = self.observedMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.onMarkupsUpdated)
 
-            # Compute inverted output (if needed)
-            if self.ui.invertedOutputSelector.currentNode():
-                # If additional output volume is selected then result with inverted threshold is written there
-                self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-                                   self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
+    def onMarkupsUpdated(self, caller=None, event=None):
+        self.onApplyButton()
 
 
 #
