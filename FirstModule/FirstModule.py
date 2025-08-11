@@ -216,9 +216,9 @@ class FirstModuleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
         if not self._parameterNode.inputVolume:
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            if firstVolumeNode:
-                self._parameterNode.inputVolume = firstVolumeNode
+            firstMarkupsNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLMarkupsFiducialNode")
+            if firstMarkupsNode:
+                self._parameterNode.inputVolume = firstMarkupsNode
 
     def setParameterNode(self, inputParameterNode: FirstModuleParameterNode | None) -> None:
         """
@@ -257,29 +257,31 @@ class FirstModuleWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.invertOutputCheckBox.checked)
             self.ui.centerOfMassValueLabel.text = str(self.logic.centerOfMass)
                 
-    def onEnableAutoUpdate(self, autoUpdate):
-        if self._markupsObserverTag:
-            self.observedMarkupNode.RemoveObserver(self._markupsObserverTag)
-            self.observedMarkupNode = None
-            self._markupsObserverTag = None
-        if autoUpdate and self.ui.inputSelector.currentNode:
-            self.observedMarkupNode = self.ui.inputSelector.currentNode()
-            self._markupsObserverTag = self.observedMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.onMarkupsUpdated)
+
 
     def onMarkupsUpdated(self, caller=None, event=None):
         self.onApplyButton()
 
     def onEnableAutoUpdate(self, autoUpdate):
-        if self._markupsObserverTag:
+        #
+        if self._markupsObserverTag and self.observedMarkupNode:
             self.observedMarkupNode.RemoveObserver(self._markupsObserverTag)
             self.observedMarkupNode = None
             self._markupsObserverTag = None
-        if autoUpdate and self.ui.inputSelector.currentNode:
-            self.observedMarkupNode = self.ui.inputSelector.currentNode()
-            self._markupsObserverTag = self.observedMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.onMarkupsUpdated)
 
-    def onMarkupsUpdated(self, caller=None, event=None):
-        self.onApplyButton()
+        if autoUpdate:
+            # acceder al nodo seleccionado correctamente
+            current = None
+            try:
+                current = self.ui.inputSelector.currentNode()
+            except Exception:
+                current = None
+            if current:
+                self.observedMarkupNode = current
+                # usar el evento correcto
+                self._markupsObserverTag = self.observedMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.onMarkupsUpdated)
+
+
 
 
 #
@@ -306,11 +308,57 @@ class FirstModuleLogic(ScriptedLoadableModuleLogic):
         
 
     def process(self, inputMarkups, outputVolume, imageThreshold, enableScreenshots=0):
-        """
-        Compute center of mass of input markup points
-        """
+        if inputMarkups.GetNumberOfControlPoints() < 2:
+            logging.error("Necesitas al menos 2 puntos para colocar la esfera")
+            self.centerOfMass = self.getCenterOfMass(inputMarkups)
+            return False
+
+        # Obtener posiciones de los dos puntos en coordenadas mundiales
+        p1 = [0, 0, 0]
+        p2 = [0, 0, 0]
+        inputMarkups.GetNthControlPointPositionWorld(0, p1)
+        inputMarkups.GetNthControlPointPositionWorld(1, p2)
+
+        import numpy as np
+        p1 = np.array(p1)
+        p2 = np.array(p2)
+
+        center = (p1 + p2) / 2.0
+        radius = np.linalg.norm(p2 - p1) / 2.0
+
+        # Crear esfera con vtkSphereSource
+        sphereSource = vtk.vtkSphereSource()
+        sphereSource.SetCenter(0, 0, 0)
+        sphereSource.SetRadius(radius)
+        sphereSource.SetThetaResolution(50)
+        sphereSource.SetPhiResolution(50)
+        sphereSource.Update()
+
+        # Crear transform para mover la esfera al centro calculado
+        transform = vtk.vtkTransform()
+        transform.Translate(center.tolist())
+
+        transformFilter = vtk.vtkTransformPolyDataFilter()
+        transformFilter.SetTransform(transform)
+        transformFilter.SetInputConnection(sphereSource.GetOutputPort())
+        transformFilter.Update()
+
+        # Crear nodo modelo en Slicer
+        outputModel = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", "EsferaEntrePuntos")
+        outputModel.SetAndObservePolyData(transformFilter.GetOutput())
+        outputModel.CreateDefaultDisplayNodes()
+        displayNode = outputModel.GetDisplayNode()
+        displayNode.SetColor(0, 1, 0)  # Verde
+        displayNode.SetVisibility2D(True)
+        displayNode.SetVisibility3D(True)
+        displayNode.SetSliceIntersectionThickness(2)
+
+        # Calcular el centro de masa
         self.centerOfMass = self.getCenterOfMass(inputMarkups)
+
         return True
+
+
 
     def getCenterOfMass(self, markupsNode):
         centerOfMass = [0,0,0]
